@@ -699,4 +699,69 @@ export class PluginManager {
       }
     }
   }
+
+  /**
+   * v1.3.0: Unload all active plugins
+   * Clears all view containers and unregisters all plugins
+   */
+  async unloadAll(): Promise<void> {
+    const allPlugins = this.getAllPlugins();
+    const activePlugins = allPlugins.filter(p =>
+      p.state === PluginState.LOADED ||
+      p.state === PluginState.ACTIVE
+    );
+
+    this.debugLog(`Unloading ${activePlugins.length} plugins`);
+
+    // Unload all plugins in parallel
+    await Promise.allSettled(
+      activePlugins.map(plugin => this.unregister(plugin.manifest.name))
+    );
+  }
+
+  /**
+   * v1.3.0: Load and activate multiple plugins with their containers
+   * @param plugins Array of plugin configs with name and container
+   * @returns Array of component references
+   */
+  async loadAndActivateMany(
+    plugins: Array<{ name: string; container: ViewContainerRef }>
+  ): Promise<ComponentRef<PluginLifecycle>[]> {
+    this.debugLog(`Loading and activating ${plugins.length} plugins`);
+
+    const results = await Promise.allSettled(
+      plugins.map(({ name, container }) => this.loadAndActivate(name, container))
+    );
+
+    const componentRefs: ComponentRef<PluginLifecycle>[] = [];
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        componentRefs.push(result.value);
+      }
+    }
+
+    return componentRefs;
+  }
+
+  /**
+   * v1.3.0: Get plugins filtered by metadata
+   * @param filter Object with metadata key-value pairs to match
+   * @returns Array of matching plugin metadata
+   */
+  getPluginsByMetadata(filter: Record<string, any>): PluginMetadata[] {
+    const allPlugins = this.getAllPlugins();
+
+    return allPlugins.filter(plugin => {
+      // Access metadata from registry entry
+      const entry = this.registry.get(plugin.manifest.name);
+      const metadata = entry?.registration.config?.metadata;
+
+      if (!metadata) return false;
+
+      // Check if all filter criteria match
+      return Object.entries(filter).every(([key, value]) => {
+        return metadata[key] === value;
+      });
+    });
+  }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@angular-dynamic/plugin-system",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "Dynamic plugin system for Angular applications",
   "peerDependencies": {
     "@angular/common": ">=16.0.0",

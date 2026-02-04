@@ -205,6 +205,11 @@ export class PluginManager {
   loadAndActivate(pluginName: string, viewContainer: ViewContainerRef): Promise<ComponentRef>;
   loadRemoteAndActivate(config: RemotePluginConfig, viewContainer: ViewContainerRef): Promise<ComponentRef>;
 
+  // v1.3.0: Bulk Operations
+  unloadAll(): Promise<void>;
+  loadAndActivateMany(plugins: Array<{name: string, container: ViewContainerRef}>): Promise<ComponentRef[]>;
+  getPluginsByMetadata(filter: Record<string, any>): PluginMetadata[];
+
   // v1.1.0: Monitoring
   isUnloading(pluginName: string): boolean;
   getPluginInfo(pluginName: string): PluginInfo | undefined;

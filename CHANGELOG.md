@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-02-04
+
+### Added - Bulk Operations & Metadata Filtering
+
+**Bulk Plugin Operations:**
+- `unloadAll()` - Unload all active plugins at once
+  - Properly cleans up all plugin resources
+  - Parallel unloading for better performance
+  - Useful for tier switching in SaaS applications
+
+- `loadAndActivateMany()` - Load and activate multiple plugins in parallel
+  - Accepts array of `{name, container}` objects
+  - Parallel loading significantly faster than sequential
+  - Returns array of ComponentRefs for all successfully loaded plugins
+
+**Metadata Filtering:**
+- `getPluginsByMetadata()` - Query plugins by their metadata
+  - Filter plugins by tier, category, or any custom metadata
+  - Enables dynamic plugin discovery
+  - Perfect for organizing plugins in groups
+
+### Benefits
+- **Simplified Application Code**: Common patterns now handled by the library
+- **Better Performance**: Parallel plugin loading/unloading
+- **More Flexible**: Query and organize plugins dynamically
+- **Less Boilerplate**: Demo app reduced from 48 to 25 lines
+
+### Example Usage
+```typescript
+// Unload all plugins
+await pluginManager.unloadAll();
+
+// Load multiple plugins in parallel
+await pluginManager.loadAndActivateMany([
+  { name: 'analytics', container: analyticsContainer },
+  { name: 'reports', container: reportsContainer }
+]);
+
+// Find all PRO tier plugins
+const proPlugins = pluginManager.getPluginsByMetadata({ tier: 'PRO' });
+```
+
+### Migration from v1.2.x
+No breaking changes. All v1.2.x code continues to work.
+
 ## [1.2.0] - 2026-02-04
 
 ### Added - Remote Plugin Loading
