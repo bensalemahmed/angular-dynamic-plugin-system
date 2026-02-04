@@ -8,22 +8,36 @@
 
 A production-ready, type-safe plugin system for Angular 16+ applications that enables runtime loading, isolated execution, and lifecycle management of plugins.
 
-## What's New in v1.1.0
+## What's New in v1.2.0
 
-Version 1.1.0 addresses critical production issues identified in post-release audits while maintaining **100% backward compatibility** with v1.0.0.
+**Remote Plugin Loading** - Load plugins from external URLs at runtime!
 
-**Critical Fixes:**
-- Lifecycle hook timeout protection (prevents infinite hangs)
-- Memory leak fixes (ComponentRef and context cleanup)
-- Race condition protection (component creation/destruction)
-- Concurrent unload safety (prevents double-destroy errors)
+```typescript
+// Load plugin from CDN
+await pluginManager.registerRemotePlugin({
+  name: 'analytics',
+  remoteUrl: 'https://cdn.yourapp.com/plugins/analytics.js',
+  exposedModule: 'AnalyticsPlugin'
+});
 
-**Optional Enhancements:**
-- Enhanced debug mode with granular logging
-- Plugin inspection API for monitoring health
-- Improved error messages with actionable guidance
+// Hot reload - update plugin without page refresh
+await pluginManager.unregisterRemotePlugin('analytics');
+await pluginManager.registerRemotePlugin({ /* new version */ });
+```
 
-**No Migration Required:** All v1.0.0 code works without modification.
+**Key Features:**
+- ✅ Load plugins from CDNs or remote servers
+- ✅ True plugin unloading with script tag removal
+- ✅ Hot reload plugins without app restart
+- ✅ Cache management and statistics
+- ✅ Helper methods: `loadAndActivate()`, `loadRemoteAndActivate()`
+- ✅ Perfect for SaaS multi-tenant and plugin marketplaces
+
+**Previous Releases:**
+- v1.1.2: Memory optimization with complete cleanup
+- v1.1.0: Critical stability fixes (timeouts, race conditions, memory leaks)
+
+**No Migration Required:** Fully backward compatible with v1.1.x
 
 ## What Problem Does This Solve?
 
@@ -50,9 +64,16 @@ This library provides a **standard, production-ready solution** for dynamic plug
 - Compatible with standalone components
 - TypeScript strict mode compliant
 
-### Stability & Safety (v1.1.0)
+### Remote Loading (v1.2.0)
+- **Remote plugin loading**: Load from CDN, remote servers, or any HTTPS URL
+- **Hot reload support**: Update plugins without page refresh
+- **Script tag management**: Automatic injection and cleanup
+- **Cache control**: Built-in caching with statistics and manual cache clearing
+- **Helper methods**: `loadAndActivate()`, `loadRemoteAndActivate()` for common patterns
+
+### Stability & Safety
 - **Lifecycle hook timeout protection**: Prevents infinite hangs (default: 5s)
-- **Memory leak prevention**: Automatic cleanup of component references and contexts
+- **Memory leak prevention**: Complete cleanup including script tags and references
 - **Race condition protection**: Safe concurrent operations on plugin lifecycle
 - **Enhanced error handling**: Actionable error messages with troubleshooting guidance
 - **Debug mode**: Granular logging for development and troubleshooting
@@ -174,7 +195,17 @@ export class PluginManager {
   getPluginState(pluginName: string): PluginState | undefined;
   isReady(pluginName: string): boolean;
 
-  // v1.1.0: New Methods
+  // v1.2.0: Remote Loading
+  registerRemotePlugin(config: RemotePluginConfig): Promise<PluginMetadata>;
+  unregisterRemotePlugin(pluginName: string): Promise<void>;
+  getRemoteCacheStats(): { size: number; entries: Array<{url: string; loadedAt: Date}> };
+  clearRemoteCache(): void;
+
+  // v1.2.0: Helper Methods
+  loadAndActivate(pluginName: string, viewContainer: ViewContainerRef): Promise<ComponentRef>;
+  loadRemoteAndActivate(config: RemotePluginConfig, viewContainer: ViewContainerRef): Promise<ComponentRef>;
+
+  // v1.1.0: Monitoring
   isUnloading(pluginName: string): boolean;
   getPluginInfo(pluginName: string): PluginInfo | undefined;
 
@@ -407,13 +438,14 @@ The current version has the following intentional limitations:
 
 - **No Plugin Dependencies**: Plugins cannot declare dependencies on other plugins (planned for v2)
 - **No Version Checking**: No automatic compatibility validation between plugins (planned for v2)
-- **No Hot Reload**: Plugin updates require reloading (HMR support planned for v2)
 - **No Router Integration**: Plugins cannot register routes dynamically (planned for v2)
-- **No Advanced Sandboxing**: Isolation is via injector only, not iframe-based (planned for v3)
-- **No Remote Loading**: Plugins must be bundled with the application (planned for v2)
-- **No Marketplace**: No built-in plugin discovery or installation system (planned for v3)
+- **No Advanced Sandboxing**: Isolation is via injector only, not iframe-based security sandbox (planned for v3)
+- **No Marketplace Integration**: No built-in plugin discovery or installation system (planned for v3)
+- **Basic Remote Loading**: v1.2 supports remote loading via script tags; advanced features like plugin signing, CDN trust verification, and SRI (Subresource Integrity) are planned for v2
 
-These limitations keep v1 focused, stable, and production-ready while maintaining a clear roadmap for future enhancements.
+**⚠️ Security Note:** Remote loading executes external code in your application context. See [SECURITY.md](./SECURITY.md) for critical security practices including CSP configuration, allowlisting, and source verification.
+
+These limitations keep v1.x focused, stable, and production-ready while maintaining a clear roadmap for future enhancements.
 
 ## Roadmap
 
@@ -421,17 +453,18 @@ These limitations keep v1 focused, stable, and production-ready while maintainin
 - Plugin dependency resolution and loading order
 - Version compatibility checking
 - Dynamic route registration for plugins
-- Remote plugin loading from CDN/server
+- **Advanced remote loading**: Plugin signing, CDN trust verification, SRI support
 - Configuration management system
 - Enhanced debugging and dev tools
 
 ### v3.0 - Enterprise Features
-- Advanced sandboxing with iframe isolation
+- Advanced sandboxing with iframe-based security isolation
 - Plugin marketplace integration
 - Permissions and security policies
 - Analytics and telemetry hooks
-- Plugin signing and verification
 - Multi-version plugin support
+
+**Note:** Roadmap features are subject to community feedback and real-world adoption patterns.
 
 ## Requirements
 
