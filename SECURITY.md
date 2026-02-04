@@ -452,7 +452,7 @@ function validateSecurityReadiness() {
 If you discover a security vulnerability:
 
 1. **Do NOT open a public issue**
-2. Email: security@yourapp.com
+2. Email: ahmed.dev.salem@gmail.com
 3. Include: reproduction steps, impact assessment
 4. We'll respond within 48 hours
 

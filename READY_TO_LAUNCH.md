@@ -292,7 +292,7 @@ Feedback welcome!
 ### For Users
 - **Issues**: GitHub Issues (24-48h response)
 - **Questions**: GitHub Discussions
-- **Security**: security@yourapp.com (private)
+- **Security**: ahmed.dev.salem@gmail.com (private)
 - **Chat**: Discord/Slack (optional)
 
 ### For Contributors
