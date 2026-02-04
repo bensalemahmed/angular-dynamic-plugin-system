@@ -46,10 +46,10 @@ pluginManager.register({
 
 ## Documentation
 
-- [Full Documentation](https://github.com/angular-dynamic/plugin-system#readme)
-- [API Reference](https://github.com/angular-dynamic/plugin-system/blob/main/docs/API_REFERENCE.md)
-- [Architecture Guide](https://github.com/angular-dynamic/plugin-system/blob/main/docs/ARCHITECTURE.md)
-- [Contributing](https://github.com/angular-dynamic/plugin-system/blob/main/CONTRIBUTING.md)
+- [Full Documentation](https://github.com/bensalemahmed/angular-dynamic-plugin-system#readme)
+- [API Reference](https://github.com/bensalemahmed/angular-dynamic-plugin-system/blob/main/docs/API_REFERENCE.md)
+- [Architecture Guide](https://github.com/bensalemahmed/angular-dynamic-plugin-system/blob/main/docs/ARCHITECTURE.md)
+- [Contributing](https://github.com/bensalemahmed/angular-dynamic-plugin-system/blob/main/CONTRIBUTING.md)
 
 ## Requirements
 

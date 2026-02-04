@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/@angular-dynamic/plugin-system.svg)](https://www.npmjs.com/package/@angular-dynamic/plugin-system)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/angular-dynamic/plugin-system)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/bensalemahmed/angular-dynamic-plugin-system)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
 [![Angular](https://img.shields.io/badge/Angular-16+-red.svg)](https://angular.io/)
 
