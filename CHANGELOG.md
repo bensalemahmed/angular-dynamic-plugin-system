@@ -5,6 +5,89 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-02-04
+
+### Added - Remote Plugin Loading
+- **NEW:** Load plugins from external URLs at runtime (webpack-style dynamic loading)
+  - New `RemotePluginLoader` service for loading scripts from CDNs or remote servers
+  - New `registerRemotePlugin()` method in `PluginManager`
+  - New `unregisterRemotePlugin()` method with full DOM and memory cleanup
+  - New `getRemoteCacheStats()` and `clearRemoteCache()` for cache management
+  - Automatic retry logic with exponential backoff
+  - Script tag injection and removal
+  - Global variable cleanup on unload
+  - Support for timeout configuration per plugin
+  - Error classification: TIMEOUT, NETWORK_ERROR, MODULE_NOT_FOUND, INVALID_MODULE
+
+### Features
+- Load plugins from any HTTP(S) URL
+- True plugin unloading with script tag removal from DOM
+- Plugin caching for performance
+- Configurable timeout and retry attempts
+- Support for nested global module paths (e.g., `MyApp.Plugins.Analytics`)
+- Cache statistics and management
+- Full TypeScript support with new types
+
+### Benefits
+- Plugins can be hosted on CDNs (CloudFlare, AWS CloudFront, etc.)
+- Plugins can be updated without rebuilding the host application
+- Reduced initial bundle size (plugins loaded on demand)
+- True memory cleanup when plugins are unloaded (script tags removed)
+- Support for plugin marketplaces and dynamic plugin distribution
+- Perfect for SaaS multi-tenant applications
+
+### New Types
+- `RemotePluginConfig` - Configuration for remote plugin loading
+- `RemotePluginLoadResult` - Result with load time and cache status
+- `RemotePluginError` - Typed errors with error codes
+- `RemotePluginCacheEntry` - Cache entry structure
+
+### Documentation
+- Added `REMOTE_LOADING.md` with complete guide and examples
+- Includes security considerations (CSP, SRI, trusted sources)
+- Performance optimization strategies
+- Migration guide from v1.1.x
+
+## [1.1.2] - 2026-02-04
+
+### Added - Memory Optimization
+- **Enhanced:** Memory management for plugin lifecycle
+  - Track module references in `PluginMetadata.moduleReference`
+  - Track injector references in `PluginMetadata.injectorReference`
+  - Explicit injector destruction on plugin unload
+  - Complete reference nullification for garbage collection
+  - Context destruction on unload
+
+### Improved
+- Better memory cleanup in `executeUnregister()`
+- Garbage collection assistance by clearing all references
+- Reduced memory footprint for inactive plugins
+- Defensive error handling in cleanup operations
+
+### Documentation
+- Added `MEMORY_OPTIMIZATION.md` with technical details
+- Comparison table: v1.1.1 vs v1.1.2 cleanup
+- Memory profiling guide using Chrome DevTools
+- Best practices for plugin developers
+
+## [1.1.1] - 2026-02-03
+
+### Fixed - AOT Compilation
+- **Critical Fix:** JIT compiler error resolved by using Angular compiler
+  - Changed build process from `tsc` to `ng-packagr`
+  - Added proper Angular metadata for AOT/JIT compatibility
+  - Fixed TypeScript error: `Injector` → `EnvironmentInjector`
+  - Now compatible with both Angular JIT and AOT compilation modes
+
+### Changed
+- Build script now uses `ng-packagr -p ng-package.json`
+- `PluginInjectorConfig.parent` type changed to `EnvironmentInjector`
+- Added type cast in `PluginManager` for injector compatibility
+
+### Dependencies
+- Added `ng-packagr@16.2.3` (devDependency)
+- Added `@angular/compiler-cli@16.2.12` (devDependency)
+
 ## [1.1.0] - 2026-02-04
 
 ### Critical Fixes

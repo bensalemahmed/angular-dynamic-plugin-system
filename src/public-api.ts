@@ -3,9 +3,11 @@ export * from './lib/types/lifecycle.types';
 export * from './lib/types/context.types';
 export * from './lib/types/errors.types';
 export * from './lib/types/registration.types';
+export * from './lib/types/remote-plugin.types';
 
 export * from './lib/services/plugin-manager.service';
 export * from './lib/services/plugin-registry.service';
+export * from './lib/services/remote-plugin-loader.service';
 
 export * from './lib/utils/plugin-injector.factory';
 export * from './lib/utils/plugin-context.impl';

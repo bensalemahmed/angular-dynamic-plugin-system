@@ -30,6 +30,8 @@ export interface PluginMetadata {
   errorCount?: number; // v1.1.0: Enhancement #3 - Track error history
   componentRef?: any;
   isCreatingComponent?: boolean; // v1.1.0: Fix #3 - Race condition protection
+  moduleReference?: any; // v1.1.1: Memory optimization - Track loaded module for cleanup
+  injectorReference?: any; // v1.1.1: Memory optimization - Track injector for proper cleanup
 }
 
 export interface PluginStateEvent {

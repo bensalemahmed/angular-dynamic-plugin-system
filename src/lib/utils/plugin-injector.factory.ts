@@ -10,7 +10,7 @@ import { PluginContext } from '../types/context.types';
 export const PLUGIN_CONTEXT = new InjectionToken<PluginContext>('PLUGIN_CONTEXT');
 
 export interface PluginInjectorConfig {
-  parent: Injector;
+  parent: EnvironmentInjector;
   context: PluginContext;
   providers?: Provider[];
 }

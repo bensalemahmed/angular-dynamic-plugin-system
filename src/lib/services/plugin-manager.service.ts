@@ -1,4 +1,4 @@
-import { Injectable, Injector, Inject, Optional, ComponentRef, ViewContainerRef } from '@angular/core';
+import { Injectable, Injector, Inject, Optional, ComponentRef, ViewContainerRef, EnvironmentInjector } from '@angular/core';
 import { Observable, filter } from 'rxjs';
 import {
   PluginMetadata,
@@ -19,7 +19,9 @@ import {
   PluginLifecycleTimeoutError,
   PluginOperationInProgressError
 } from '../types/errors.types';
+import { RemotePluginConfig } from '../types/remote-plugin.types';
 import { PluginRegistry } from './plugin-registry.service';
+import { RemotePluginLoader } from './remote-plugin-loader.service';
 import { PluginContextImpl } from '../utils/plugin-context.impl';
 import { createPluginInjector } from '../utils/plugin-injector.factory';
 import { PluginLifecycle } from '../types/lifecycle.types';
@@ -34,6 +36,7 @@ export class PluginManager {
   constructor(
     private readonly registry: PluginRegistry,
     private readonly injector: Injector,
+    private readonly remoteLoader: RemotePluginLoader,
     @Optional() @Inject(PLUGIN_SYSTEM_CONFIG) private readonly config?: PluginSystemConfig
   ) {
     this.pluginState$ = this.registry.state$.pipe(
@@ -149,6 +152,35 @@ export class PluginManager {
         this.registry.updateMetadata(pluginName, { componentRef: undefined });
       }
 
+      // v1.1.1: Memory optimization - Clear module and injector references
+      if (metadata.injectorReference) {
+        this.debugLog(`Destroying injector for plugin '${pluginName}'`);
+        try {
+          metadata.injectorReference.destroy();
+        } catch (error) {
+          // Defensive: continue cleanup even if injector destruction fails
+          this.debugLog(`Warning: Injector destruction failed for '${pluginName}': ${error}`);
+        }
+      }
+
+      // v1.1.1: Memory optimization - Clear all references to help garbage collection
+      this.registry.updateMetadata(pluginName, {
+        moduleReference: null,
+        injectorReference: null,
+        componentRef: null,
+        error: undefined
+      });
+
+      // v1.1.1: Memory optimization - Clear context
+      const context = this.registry.getContext(pluginName);
+      if (context) {
+        try {
+          context.destroy();
+        } catch (error) {
+          this.debugLog(`Warning: Context destruction failed for '${pluginName}': ${error}`);
+        }
+      }
+
       await this.callLifecycleHook(pluginName, 'afterUnload');
 
       // v1.1.0: Enhancement #2 - Debug logging
@@ -180,6 +212,98 @@ export class PluginManager {
 
   getPluginsByState(state: PluginState): PluginMetadata[] {
     return this.registry.getPluginsByState(state);
+  }
+
+  /**
+   * v1.2.0: Register and load a plugin from a remote URL
+   * This enables true dynamic plugin loading from external sources
+   */
+  async registerRemotePlugin(config: RemotePluginConfig): Promise<PluginMetadata> {
+    // Use RemotePluginLoader to fetch the remote module
+    const result = await this.remoteLoader.loadRemotePlugin(config);
+
+    // Register the plugin with the fetched module
+    this.register({
+      name: config.name,
+      loadFn: async () => {
+        // Module is already loaded, just return it
+        return result.module;
+      },
+      config: {
+        metadata: {
+          ...config.metadata,
+          remote: true,
+          remoteUrl: config.remoteUrl,
+          loadTime: result.loadTime,
+          fromCache: result.fromCache
+        }
+      }
+    });
+
+    // Load the plugin immediately
+    return this.load(config.name);
+  }
+
+  /**
+   * v1.2.0: Unregister a remote plugin and clean up remote resources
+   */
+  async unregisterRemotePlugin(pluginName: string): Promise<void> {
+    // Get plugin metadata to find the remote URL
+    const metadata = this.registry.getMetadata(pluginName);
+    const remoteUrl = metadata?.componentRef ? (metadata as any).remoteUrl : null;
+
+    // Unregister the plugin normally
+    await this.unregister(pluginName);
+
+    // Clean up remote loader cache
+    if (remoteUrl) {
+      this.remoteLoader.unloadRemotePlugin(remoteUrl);
+    } else {
+      // Try by plugin name
+      this.remoteLoader.unloadRemotePlugin(pluginName);
+    }
+  }
+
+  /**
+   * v1.2.0: Get remote plugin loader cache statistics
+   */
+  getRemoteCacheStats() {
+    return this.remoteLoader.getCacheStats();
+  }
+
+  /**
+   * v1.2.0: Clear all remote plugin cache
+   */
+  clearRemoteCache(): void {
+    this.remoteLoader.clearCache();
+  }
+
+  /**
+   * v1.2.0: Helper - Load and activate a plugin in one call
+   * Combines load() + createPluginComponent() for convenience
+   */
+  async loadAndActivate(
+    pluginName: string,
+    viewContainer: ViewContainerRef
+  ): Promise<ComponentRef<PluginLifecycle>> {
+    // Load if not already loaded
+    if (!this.isReady(pluginName)) {
+      await this.load(pluginName);
+    }
+
+    // Create component
+    return this.createPluginComponent(pluginName, viewContainer);
+  }
+
+  /**
+   * v1.2.0: Helper - Load remote plugin and activate it
+   */
+  async loadRemoteAndActivate(
+    config: RemotePluginConfig,
+    viewContainer: ViewContainerRef
+  ): Promise<ComponentRef<PluginLifecycle>> {
+    await this.registerRemotePlugin(config);
+    return this.createPluginComponent(config.name, viewContainer);
   }
 
   async createPluginComponent(
@@ -310,7 +434,7 @@ export class PluginManager {
       this.registry.setContext(pluginName, context);
 
       const pluginInjector = createPluginInjector({
-        parent: this.injector,
+        parent: this.injector as EnvironmentInjector,
         context,
         providers: []
       });
@@ -337,9 +461,12 @@ export class PluginManager {
       // v1.1.0: Enhancement #2 - Log state transition
       this.logStateTransition(pluginName, PluginState.LOADING, PluginState.LOADED);
 
+      // v1.1.1: Memory optimization - Store module and injector references for cleanup
       this.registry.updateMetadata(pluginName, {
         state: PluginState.LOADED,
-        loadedAt: new Date()
+        loadedAt: new Date(),
+        moduleReference: module,
+        injectorReference: pluginInjector
       });
 
       await this.callLifecycleHook(pluginName, 'afterLoad');
