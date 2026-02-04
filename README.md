@@ -8,6 +8,23 @@
 
 A production-ready, type-safe plugin system for Angular 16+ applications that enables runtime loading, isolated execution, and lifecycle management of plugins.
 
+## What's New in v1.1.0
+
+Version 1.1.0 addresses critical production issues identified in post-release audits while maintaining **100% backward compatibility** with v1.0.0.
+
+**Critical Fixes:**
+- Lifecycle hook timeout protection (prevents infinite hangs)
+- Memory leak fixes (ComponentRef and context cleanup)
+- Race condition protection (component creation/destruction)
+- Concurrent unload safety (prevents double-destroy errors)
+
+**Optional Enhancements:**
+- Enhanced debug mode with granular logging
+- Plugin inspection API for monitoring health
+- Improved error messages with actionable guidance
+
+**No Migration Required:** All v1.0.0 code works without modification.
+
 ## What Problem Does This Solve?
 
 Modern Angular applications, especially SaaS platforms, multi-tenant systems, and extensible applications, often need to:
@@ -22,6 +39,7 @@ This library provides a **standard, production-ready solution** for dynamic plug
 
 ## Features
 
+### Core Capabilities
 - Runtime plugin loading via dynamic imports
 - Isolated injector per plugin for dependency isolation
 - Type-safe plugin lifecycle hooks
@@ -31,6 +49,13 @@ This library provides a **standard, production-ready solution** for dynamic plug
 - Timeout support with automatic cleanup
 - Compatible with standalone components
 - TypeScript strict mode compliant
+
+### Stability & Safety (v1.1.0)
+- **Lifecycle hook timeout protection**: Prevents infinite hangs (default: 5s)
+- **Memory leak prevention**: Automatic cleanup of component references and contexts
+- **Race condition protection**: Safe concurrent operations on plugin lifecycle
+- **Enhanced error handling**: Actionable error messages with troubleshooting guidance
+- **Debug mode**: Granular logging for development and troubleshooting
 
 ## Installation
 
@@ -51,7 +76,9 @@ export const appConfig: ApplicationConfig = {
     providePluginSystem({
       globalTimeout: 30000,
       maxConcurrentLoads: 3,
-      enableDevMode: false
+      enableDevMode: false,
+      // v1.1.0: Lifecycle hook timeout protection
+      lifecycleHookTimeout: 5000 // Default: 5000ms, set to 0 to disable
     })
   ]
 };
@@ -139,13 +166,20 @@ Main orchestrator for plugin lifecycle management.
 ```typescript
 @Injectable({ providedIn: 'root' })
 export class PluginManager {
+  // Core Methods
   register(config: PluginRegistration): void;
   load(pluginName: string): Promise<PluginMetadata>;
   loadMany(pluginNames: string[]): Promise<PluginMetadata[]>;
   unregister(pluginName: string): Promise<void>;
   getPluginState(pluginName: string): PluginState | undefined;
-  readonly pluginState$: Observable<PluginStateEvent>;
   isReady(pluginName: string): boolean;
+
+  // v1.1.0: New Methods
+  isUnloading(pluginName: string): boolean;
+  getPluginInfo(pluginName: string): PluginInfo | undefined;
+
+  // Observables
+  readonly pluginState$: Observable<PluginStateEvent>;
 }
 ```
 
@@ -243,6 +277,41 @@ providePluginSystem({
 })
 ```
 
+### Debug Mode (v1.1.0)
+
+```typescript
+providePluginSystem({
+  enableDevMode: true,
+  debugOptions: {
+    logLifecycleHooks: true,      // Log hook calls and timing
+    logStateTransitions: true,     // Log state changes
+    validateManifests: true,       // Strict manifest validation
+    throwOnWarnings: false         // Treat warnings as errors
+  },
+  lifecycleHookTimeout: 10000     // Custom timeout (default: 5000ms)
+})
+```
+
+### Plugin Health Monitoring (v1.1.0)
+
+```typescript
+// Get detailed plugin information
+const info = pluginManager.getPluginInfo('invoice');
+if (info) {
+  console.log(`State: ${info.state}`);
+  console.log(`Loaded at: ${info.loadedAt}`);
+  console.log(`Error count: ${info.errorCount}`);
+  if (info.lastError) {
+    console.error(`Last error: ${info.lastError.message}`);
+  }
+}
+
+// Check if plugin is unloading
+if (pluginManager.isUnloading('invoice')) {
+  console.log('Plugin is currently being unloaded');
+}
+```
+
 ### Plugin State Monitoring
 
 ```typescript
@@ -300,7 +369,39 @@ Plugins can implement optional lifecycle hooks:
 
 All hooks support both synchronous and asynchronous execution.
 
-## Limitations (v1.0.0)
+## Production Considerations
+
+### Lifecycle Hook Timeouts (v1.1.0)
+
+Plugin lifecycle hooks (onLoad, onActivate, onDeactivate, onDestroy) have a default timeout of **5 seconds** to prevent infinite hangs. If a hook doesn't complete within this time, a `PluginLifecycleTimeoutError` is thrown.
+
+**Best Practices:**
+- Keep lifecycle hooks lightweight
+- Move heavy operations to background tasks
+- Increase timeout for plugins with legitimate long initialization: `lifecycleHookTimeout: 10000`
+- Disable timeout only for trusted plugins: `lifecycleHookTimeout: 0`
+
+```typescript
+// Example: Plugin with long initialization
+providePluginSystem({
+  lifecycleHookTimeout: 15000 // 15 seconds for data-intensive plugins
+})
+```
+
+### Memory Management (v1.1.0)
+
+Version 1.1.0 includes automatic memory leak prevention:
+- Component references cleared after destruction
+- Plugin contexts destroyed on unload and load failures
+- Injectors properly cleaned up
+- Event handlers removed when plugin unloads
+
+**For long-running applications:**
+- Monitor plugin load/unload cycles
+- Avoid excessive rapid reloading
+- Use `getPluginInfo()` to track error counts
+
+### Known Limitations
 
 The current version has the following intentional limitations:
 

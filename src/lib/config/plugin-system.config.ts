@@ -7,7 +7,15 @@ export function providePluginSystem(config?: PluginSystemConfig): EnvironmentPro
     maxConcurrentLoads: 3,
     enableDevMode: false,
     lifecycleHooks: {},
-    defaultAllowedServices: []
+    defaultAllowedServices: [],
+    lifecycleHookTimeout: 5000, // v1.1.0: Fix #1 - 5 second default timeout
+    // v1.1.0: Enhancement #2 - Debug options (all opt-in, no logging by default)
+    debugOptions: {
+      logLifecycleHooks: false,
+      logStateTransitions: false,
+      validateManifests: false,
+      throwOnWarnings: false
+    }
   };
 
   const mergedConfig: PluginSystemConfig = {
@@ -20,7 +28,12 @@ export function providePluginSystem(config?: PluginSystemConfig): EnvironmentPro
     defaultAllowedServices: [
       ...(defaultConfig.defaultAllowedServices || []),
       ...(config?.defaultAllowedServices || [])
-    ]
+    ],
+    // v1.1.0: Enhancement #2 - Merge debug options
+    debugOptions: {
+      ...defaultConfig.debugOptions,
+      ...config?.debugOptions
+    }
   };
 
   return makeEnvironmentProviders([

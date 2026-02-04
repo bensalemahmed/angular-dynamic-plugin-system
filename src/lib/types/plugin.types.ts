@@ -25,8 +25,11 @@ export interface PluginMetadata {
   manifest: PluginManifest;
   state: PluginState;
   loadedAt?: Date;
+  activatedAt?: Date; // v1.1.0: Enhancement #3 - Track activation time
   error?: Error;
+  errorCount?: number; // v1.1.0: Enhancement #3 - Track error history
   componentRef?: any;
+  isCreatingComponent?: boolean; // v1.1.0: Fix #3 - Race condition protection
 }
 
 export interface PluginStateEvent {
@@ -38,4 +41,16 @@ export interface PluginStateEvent {
 
 export interface LoadedPluginModule {
   PluginManifest: PluginManifest;
+}
+
+// v1.1.0: Enhancement #3 - Plugin metadata inspection
+export interface PluginInfo {
+  name: string;
+  state: PluginState;
+  loadedAt?: Date;
+  activatedAt?: Date;
+  manifest?: PluginManifest;
+  hasComponent: boolean;
+  errorCount: number;
+  lastError?: Error;
 }

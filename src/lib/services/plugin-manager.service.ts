@@ -1,5 +1,5 @@
 import { Injectable, Injector, Inject, Optional, ComponentRef, ViewContainerRef } from '@angular/core';
-import { Observable, filter, map } from 'rxjs';
+import { Observable, filter } from 'rxjs';
 import {
   PluginMetadata,
   PluginState,
@@ -15,7 +15,9 @@ import {
   PluginLoadError,
   PluginNotFoundError,
   PluginStateError,
-  PluginLifecycleError
+  PluginLifecycleError,
+  PluginLifecycleTimeoutError,
+  PluginOperationInProgressError
 } from '../types/errors.types';
 import { PluginRegistry } from './plugin-registry.service';
 import { PluginContextImpl } from '../utils/plugin-context.impl';
@@ -25,6 +27,7 @@ import { PluginLifecycle } from '../types/lifecycle.types';
 @Injectable({ providedIn: 'root' })
 export class PluginManager {
   private readonly loadingPromises = new Map<string, Promise<PluginMetadata>>();
+  private readonly unloadingPromises = new Map<string, Promise<void>>(); // v1.1.0: Fix #4
 
   readonly pluginState$: Observable<PluginStateEvent>;
 
@@ -91,6 +94,28 @@ export class PluginManager {
   }
 
   async unregister(pluginName: string): Promise<void> {
+    // v1.1.0: Fix #4 - Prevent concurrent unload operations
+    const existingUnloadPromise = this.unloadingPromises.get(pluginName);
+    if (existingUnloadPromise) {
+      return existingUnloadPromise;
+    }
+
+    const unloadPromise = this.executeUnregister(pluginName);
+    this.unloadingPromises.set(pluginName, unloadPromise);
+
+    try {
+      await unloadPromise;
+    } finally {
+      this.unloadingPromises.delete(pluginName);
+    }
+  }
+
+  // v1.1.0: Fix #4 - Check if plugin is currently unloading
+  isUnloading(pluginName: string): boolean {
+    return this.unloadingPromises.has(pluginName);
+  }
+
+  private async executeUnregister(pluginName: string): Promise<void> {
     const entry = this.registry.get(pluginName);
     if (!entry) {
       throw new PluginNotFoundError(pluginName);
@@ -102,16 +127,32 @@ export class PluginManager {
       throw new PluginStateError(pluginName, 'not LOADING', metadata.state);
     }
 
+    // v1.1.0: Fix #3 - Prevent unload during component creation
+    if (metadata.isCreatingComponent) {
+      throw new PluginOperationInProgressError(pluginName, 'creating');
+    }
+
     try {
+      // v1.1.0: Enhancement #2 - Debug logging
+      this.logStateTransition(pluginName, metadata.state, PluginState.UNLOADING);
+
       this.registry.updateMetadata(pluginName, { state: PluginState.UNLOADING });
 
       await this.callLifecycleHook(pluginName, 'beforeUnload');
 
       if (metadata.componentRef) {
+        // v1.1.0: Enhancement #2 - Debug logging
+        this.debugLog(`Destroying component for plugin '${pluginName}'`);
+
         await this.destroyComponent(metadata.componentRef, pluginName);
+        // v1.1.0: Fix #2 - Clear componentRef to prevent memory leak
+        this.registry.updateMetadata(pluginName, { componentRef: undefined });
       }
 
       await this.callLifecycleHook(pluginName, 'afterUnload');
+
+      // v1.1.0: Enhancement #2 - Debug logging
+      this.debugLog(`Plugin '${pluginName}' unregistered successfully`);
 
       this.registry.unregister(pluginName);
     } catch (error) {
@@ -150,6 +191,11 @@ export class PluginManager {
       throw new PluginNotFoundError(pluginName);
     }
 
+    // v1.1.0: Fix #3 - Prevent concurrent component creation
+    if (metadata.isCreatingComponent) {
+      throw new PluginOperationInProgressError(pluginName, 'creating');
+    }
+
     if (!this.isReady(pluginName)) {
       throw new PluginStateError(pluginName, 'LOADED or ACTIVE', metadata.state);
     }
@@ -165,22 +211,52 @@ export class PluginManager {
     }
 
     try {
+      // v1.1.0: Fix #3 - Set flag to prevent concurrent operations
+      this.registry.updateMetadata(pluginName, { isCreatingComponent: true });
+
+      // v1.1.0: Enhancement #2 - Debug logging
+      this.debugLog(`Creating component for plugin '${pluginName}'`);
+
+      // v1.1.0: Fix #2 - Check for existing componentRef and destroy it first
+      if (metadata.componentRef) {
+        await this.destroyComponent(metadata.componentRef, pluginName);
+        this.registry.updateMetadata(pluginName, { componentRef: undefined });
+      }
+
       const componentRef = viewContainer.createComponent(
         metadata.manifest.entryComponent,
         { injector }
       );
 
+      // v1.1.0: Enhancement #3 - Track activation time
+      this.logStateTransition(pluginName, metadata.state, PluginState.ACTIVE);
+
       this.registry.updateMetadata(pluginName, {
         componentRef,
-        state: PluginState.ACTIVE
+        state: PluginState.ACTIVE,
+        activatedAt: new Date(), // v1.1.0: Enhancement #3
+        isCreatingComponent: false
       });
 
       if (componentRef.instance.onActivate) {
-        await componentRef.instance.onActivate(context);
+        // v1.1.0: Enhancement #2 - Debug logging
+        this.debugLog(`Calling onActivate() for plugin '${pluginName}'`);
+        const hookStartTime = Date.now();
+
+        await this.callPluginLifecycleHookWithTimeout(
+          Promise.resolve(componentRef.instance.onActivate(context)),
+          pluginName,
+          'onActivate'
+        );
+
+        // v1.1.0: Enhancement #2 - Debug logging
+        this.debugLog(`onActivate() completed in ${Date.now() - hookStartTime}ms for plugin '${pluginName}'`);
       }
 
       return componentRef;
     } catch (error) {
+      // v1.1.0: Fix #3 - Clear flag on error
+      this.registry.updateMetadata(pluginName, { isCreatingComponent: false });
       this.handleError(pluginName, error as Error);
       throw new PluginLoadError(pluginName, error as Error);
     }
@@ -204,6 +280,9 @@ export class PluginManager {
     }
 
     try {
+      // v1.1.0: Enhancement #2 - Debug logging
+      this.logStateTransition(pluginName, currentState, PluginState.LOADING);
+
       this.registry.updateMetadata(pluginName, {
         state: PluginState.LOADING,
         error: undefined
@@ -211,7 +290,19 @@ export class PluginManager {
 
       await this.callLifecycleHook(pluginName, 'beforeLoad');
 
+      // v1.1.0: Enhancement #2 - Debug logging
+      this.debugLog(`Loading module for plugin '${pluginName}'`);
+      const loadStartTime = Date.now();
+
       const module = await this.loadPluginModule(registration, pluginName);
+
+      // v1.1.0: Enhancement #2 - Validate manifest in debug mode
+      if (this.config?.enableDevMode && this.config?.debugOptions?.validateManifests) {
+        this.validatePluginManifest(module.PluginManifest, pluginName);
+      }
+
+      // v1.1.0: Enhancement #2 - Debug logging
+      this.debugLog(`Module loaded in ${Date.now() - loadStartTime}ms for plugin '${pluginName}'`);
 
       this.registry.setManifest(pluginName, module.PluginManifest);
 
@@ -228,8 +319,23 @@ export class PluginManager {
 
       const instance = new module.PluginManifest.entryComponent();
       if (instance.onLoad) {
-        await instance.onLoad(context);
+        // v1.1.0: Enhancement #2 - Debug logging
+        this.debugLog(`Calling onLoad() for plugin '${pluginName}'`);
+        const hookStartTime = Date.now();
+
+        // v1.1.0: Fix #1 - Add timeout protection to onLoad
+        await this.callPluginLifecycleHookWithTimeout(
+          Promise.resolve(instance.onLoad(context)),
+          pluginName,
+          'onLoad'
+        );
+
+        // v1.1.0: Enhancement #2 - Debug logging
+        this.debugLog(`onLoad() completed in ${Date.now() - hookStartTime}ms for plugin '${pluginName}'`);
       }
+
+      // v1.1.0: Enhancement #2 - Log state transition
+      this.logStateTransition(pluginName, PluginState.LOADING, PluginState.LOADED);
 
       this.registry.updateMetadata(pluginName, {
         state: PluginState.LOADED,
@@ -240,6 +346,15 @@ export class PluginManager {
 
       return this.registry.getMetadata(pluginName)!;
     } catch (error) {
+      // v1.1.0: Fix #5 - Destroy context if plugin load fails after context creation
+      const context = this.registry.getContext(pluginName);
+      if (context) {
+        try {
+          context.destroy();
+        } catch {
+          // Defensive: ignore context destruction errors during error handling
+        }
+      }
       this.handleError(pluginName, error as Error);
       throw new PluginLoadError(pluginName, error as Error);
     }
@@ -293,11 +408,33 @@ export class PluginManager {
   ): Promise<void> {
     try {
       if (componentRef.instance.onDeactivate) {
-        await componentRef.instance.onDeactivate();
+        // v1.1.0: Enhancement #2 - Debug logging
+        this.debugLog(`Calling onDeactivate() for plugin '${pluginName}'`);
+        const hookStartTime = Date.now();
+
+        await this.callPluginLifecycleHookWithTimeout(
+          Promise.resolve(componentRef.instance.onDeactivate()),
+          pluginName,
+          'onDeactivate'
+        );
+
+        // v1.1.0: Enhancement #2 - Debug logging
+        this.debugLog(`onDeactivate() completed in ${Date.now() - hookStartTime}ms for plugin '${pluginName}'`);
       }
 
       if (componentRef.instance.onDestroy) {
-        await componentRef.instance.onDestroy();
+        // v1.1.0: Enhancement #2 - Debug logging
+        this.debugLog(`Calling onDestroy() for plugin '${pluginName}'`);
+        const hookStartTime = Date.now();
+
+        await this.callPluginLifecycleHookWithTimeout(
+          Promise.resolve(componentRef.instance.onDestroy()),
+          pluginName,
+          'onDestroy'
+        );
+
+        // v1.1.0: Enhancement #2 - Debug logging
+        this.debugLog(`onDestroy() completed in ${Date.now() - hookStartTime}ms for plugin '${pluginName}'`);
       }
 
       componentRef.destroy();
@@ -306,14 +443,37 @@ export class PluginManager {
     }
   }
 
+  // v1.1.0: Fix #1 - Lifecycle hook timeout protection
+  private async callPluginLifecycleHookWithTimeout<T>(
+    promise: Promise<T>,
+    pluginName: string,
+    hookName: string
+  ): Promise<T> {
+    const timeout = this.config?.lifecycleHookTimeout ?? 5000;
+
+    // If timeout is 0 or Infinity, don't apply timeout
+    if (timeout === 0 || timeout === Infinity) {
+      return promise;
+    }
+
+    return Promise.race([
+      promise,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => {
+          reject(new PluginLifecycleTimeoutError(pluginName, hookName, timeout));
+        }, timeout)
+      )
+    ]);
+  }
+
   private async callLifecycleHook(
     pluginName: string,
     hook: keyof Required<PluginSystemConfig>['lifecycleHooks']
   ): Promise<void> {
     const hookFn = this.config?.lifecycleHooks?.[hook];
-    if (hookFn) {
+    if (hookFn && hook !== 'onError') {
       try {
-        await hookFn(pluginName);
+        await (hookFn as (pluginName: string) => void | Promise<void>)(pluginName);
       } catch (error) {
         if (this.config?.enableDevMode) {
           throw error;
@@ -322,10 +482,33 @@ export class PluginManager {
     }
   }
 
+  // v1.1.0: Enhancement #3 - Get detailed plugin information
+  getPluginInfo(pluginName: string): import('../types/plugin.types').PluginInfo | undefined {
+    const metadata = this.registry.getMetadata(pluginName);
+    if (!metadata) {
+      return undefined;
+    }
+
+    return {
+      name: pluginName,
+      state: metadata.state,
+      loadedAt: metadata.loadedAt,
+      activatedAt: metadata.activatedAt,
+      manifest: metadata.manifest,
+      hasComponent: !!metadata.componentRef,
+      errorCount: metadata.errorCount || 0,
+      lastError: metadata.error
+    };
+  }
+
   private handleError(pluginName: string, error: Error): void {
+    const currentMetadata = this.registry.getMetadata(pluginName);
+    const errorCount = (currentMetadata?.errorCount || 0) + 1;
+
     this.registry.updateMetadata(pluginName, {
       state: PluginState.ERROR,
-      error
+      error,
+      errorCount // v1.1.0: Enhancement #3 - Track error count
     });
 
     const onError = this.config?.lifecycleHooks?.onError;
@@ -334,6 +517,58 @@ export class PluginManager {
         onError(pluginName, error);
       } catch {
         // Defensive: do not propagate error handler errors
+      }
+    }
+  }
+
+  // v1.1.0: Enhancement #2 - Debug logging helper (tree-shakeable, opt-in only)
+  private debugLog(message: string, ...args: any[]): void {
+    if (this.config?.enableDevMode && this.config?.debugOptions?.logLifecycleHooks) {
+      console.log(`[PluginSystem] ${message}`, ...args);
+    }
+  }
+
+  // v1.1.0: Enhancement #2 - Log state transitions
+  private logStateTransition(pluginName: string, fromState: PluginState, toState: PluginState): void {
+    if (this.config?.enableDevMode && this.config?.debugOptions?.logStateTransitions) {
+      console.log(`[PluginSystem] Plugin '${pluginName}' → ${toState}`, { from: fromState, to: toState });
+    }
+  }
+
+  // v1.1.0: Enhancement #2 - Validate plugin manifest in debug mode
+  private validatePluginManifest(manifest: import('../types/plugin.types').PluginManifest, pluginName: string): void {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    if (!manifest.name) {
+      errors.push('Manifest missing required field: name');
+    } else if (manifest.name !== pluginName) {
+      warnings.push(`Manifest name '${manifest.name}' does not match plugin name '${pluginName}'`);
+    }
+
+    if (!manifest.version) {
+      errors.push('Manifest missing required field: version');
+    } else if (!/^\d+\.\d+\.\d+/.test(manifest.version)) {
+      warnings.push(`Manifest version '${manifest.version}' does not follow semver format`);
+    }
+
+    if (!manifest.entryComponent) {
+      errors.push('Manifest missing required field: entryComponent');
+    }
+
+    if (errors.length > 0) {
+      const errorMessage = `Plugin '${pluginName}' manifest validation failed:\n${errors.join('\n')}`;
+      console.error(`[PluginSystem] ${errorMessage}`);
+      if (this.config?.debugOptions?.throwOnWarnings) {
+        throw new Error(errorMessage);
+      }
+    }
+
+    if (warnings.length > 0) {
+      const warningMessage = `Plugin '${pluginName}' manifest validation warnings:\n${warnings.join('\n')}`;
+      console.warn(`[PluginSystem] ${warningMessage}`);
+      if (this.config?.debugOptions?.throwOnWarnings) {
+        throw new Error(warningMessage);
       }
     }
   }
