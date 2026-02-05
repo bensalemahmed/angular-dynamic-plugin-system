@@ -29,7 +29,7 @@ import { PluginLifecycle } from '../types/lifecycle.types';
 @Injectable({ providedIn: 'root' })
 export class PluginManager {
   // v1.4.0: Library version for debugging
-  static readonly VERSION = '1.4.0';
+  static readonly VERSION = '1.4.1';
 
   private readonly loadingPromises = new Map<string, Promise<PluginMetadata>>();
   private readonly unloadingPromises = new Map<string, Promise<void>>(); // v1.1.0: Fix #4
