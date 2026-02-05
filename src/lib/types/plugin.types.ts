@@ -5,6 +5,8 @@ export interface PluginManifest {
   name: string;
   version: string;
   entryComponent: Type<PluginLifecycle>;
+  /** Optional NgModule to bootstrap with the plugin (v1.4.0) */
+  entryModule?: Type<any>;
   displayName?: string;
   description?: string;
   author?: string;
@@ -31,6 +33,7 @@ export interface PluginMetadata {
   componentRef?: any;
   isCreatingComponent?: boolean; // v1.1.0: Fix #3 - Race condition protection
   moduleReference?: any; // v1.1.1: Memory optimization - Track loaded module for cleanup
+  ngModuleRef?: any; // v1.4.0: Track NgModuleRef for plugins with entryModule
   injectorReference?: any; // v1.1.1: Memory optimization - Track injector for proper cleanup
 }
 

@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-02-05
+
+### Added - NgModule Support
+
+**Full NgModule Loading:**
+- `entryModule` - New optional field in PluginManifest
+  - Load complete NgModules with your plugins
+  - Plugins can have their own services, pipes, and directives
+  - Full Angular dependency injection within the plugin module
+  - Automatic NgModule cleanup on unload
+
+### Benefits
+- **Complex Plugins**: Plugins can now have their own internal services
+- **Better Isolation**: Plugin services are scoped to the plugin module
+- **Full Angular Features**: Use pipes, directives, and services in plugins
+- **Backward Compatible**: Standalone components still work without changes
+
+### Example Usage
+```typescript
+// Plugin with its own NgModule
+@NgModule({
+  declarations: [DashboardComponent],
+  imports: [CommonModule],
+  providers: [DashboardService]  // Plugin-scoped service
+})
+export class DashboardModule {}
+
+export const PluginManifest = {
+  name: 'dashboard',
+  version: '1.0.0',
+  entryComponent: DashboardComponent,
+  entryModule: DashboardModule  // NEW in v1.4.0!
+};
+```
+
+### Migration from v1.3.x
+No changes required! This is a purely additive feature:
+- Existing plugins with standalone components continue to work
+- Add `entryModule` only if your plugin needs NgModule features
+
+---
+
 ## [1.3.0] - 2026-02-04
 
 ### Added - Bulk Operations & Metadata Filtering

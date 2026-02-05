@@ -8,6 +8,48 @@
 
 A production-ready, type-safe plugin system for Angular 16+ applications that enables runtime loading, isolated execution, and lifecycle management of plugins.
 
+## What's New in v1.4.0
+
+**NgModule Support** - Load complete NgModules with your plugins!
+
+```typescript
+// Plugin with NgModule support
+export const PluginManifest = {
+  name: 'dashboard',
+  version: '1.0.0',
+  entryComponent: DashboardComponent,
+  entryModule: DashboardModule  // NEW: Full NgModule support!
+};
+```
+
+**Key Benefits:**
+- ✅ Load plugins with their own services, pipes, and directives
+- ✅ Full dependency injection within the plugin module
+- ✅ Automatic NgModule cleanup on unload
+- ✅ Backward compatible - standalone components still work!
+
+---
+
+## What's New in v1.3.0
+
+**Bulk Operations** - Load and unload multiple plugins efficiently!
+
+```typescript
+// Load multiple plugins in parallel
+await pluginManager.loadAndActivateMany([
+  { name: 'analytics', container: analyticsContainer },
+  { name: 'reports', container: reportsContainer }
+]);
+
+// Unload all plugins at once
+await pluginManager.unloadAll();
+
+// Filter plugins by metadata
+const proPlugins = pluginManager.getPluginsByMetadata({ tier: 'PRO' });
+```
+
+---
+
 ## What's New in v1.2.0
 
 **Remote Plugin Loading** - Load plugins from external URLs at runtime!
@@ -140,6 +182,61 @@ export const PluginManifest = {
   entryComponent: InvoicePluginComponent,
   displayName: 'Invoice Plugin',
   description: 'Handles invoice management'
+};
+```
+
+### 2b. Create a Plugin with NgModule (v1.4.0)
+
+For plugins that need their own services, pipes, or directives:
+
+```typescript
+import { NgModule, Component, Injectable } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { PluginLifecycle, PluginContext } from '@angular-dynamic/plugin-system';
+
+// Plugin-specific service
+@Injectable()
+export class DashboardService {
+  getData() {
+    return { visits: 1234, sales: 567 };
+  }
+}
+
+// Plugin component
+@Component({
+  selector: 'dashboard-plugin',
+  template: `
+    <div class="dashboard">
+      <h2>Dashboard</h2>
+      <p>Visits: {{ data.visits }}</p>
+      <p>Sales: {{ data.sales }}</p>
+    </div>
+  `
+})
+export class DashboardComponent implements PluginLifecycle {
+  data = { visits: 0, sales: 0 };
+
+  constructor(private dashboardService: DashboardService) {}
+
+  async onLoad(context: PluginContext): Promise<void> {
+    this.data = this.dashboardService.getData();
+  }
+}
+
+// Plugin NgModule
+@NgModule({
+  declarations: [DashboardComponent],
+  imports: [CommonModule],
+  providers: [DashboardService]
+})
+export class DashboardModule {}
+
+// Export manifest with entryModule
+export const PluginManifest = {
+  name: 'dashboard',
+  version: '1.0.0',
+  entryComponent: DashboardComponent,
+  entryModule: DashboardModule  // NgModule with services!
 };
 ```
 

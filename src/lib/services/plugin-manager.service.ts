@@ -1,4 +1,4 @@
-import { Injectable, Injector, Inject, Optional, ComponentRef, ViewContainerRef, EnvironmentInjector } from '@angular/core';
+import { Injectable, Injector, Inject, Optional, ComponentRef, ViewContainerRef, EnvironmentInjector, createNgModule, NgModuleRef } from '@angular/core';
 import { Observable, filter } from 'rxjs';
 import {
   PluginMetadata,
@@ -28,6 +28,9 @@ import { PluginLifecycle } from '../types/lifecycle.types';
 
 @Injectable({ providedIn: 'root' })
 export class PluginManager {
+  // v1.4.0: Library version for debugging
+  static readonly VERSION = '1.4.0';
+
   private readonly loadingPromises = new Map<string, Promise<PluginMetadata>>();
   private readonly unloadingPromises = new Map<string, Promise<void>>(); // v1.1.0: Fix #4
 
@@ -39,6 +42,9 @@ export class PluginManager {
     private readonly remoteLoader: RemotePluginLoader,
     @Optional() @Inject(PLUGIN_SYSTEM_CONFIG) private readonly config?: PluginSystemConfig
   ) {
+    // Log version on init for debugging
+    console.log(`[PluginSystem] Initialized - Version: ${PluginManager.VERSION}`);
+
     this.pluginState$ = this.registry.state$.pipe(
       filter((event): event is PluginStateEvent => event !== null)
     );
@@ -150,6 +156,17 @@ export class PluginManager {
         await this.destroyComponent(metadata.componentRef, pluginName);
         // v1.1.0: Fix #2 - Clear componentRef to prevent memory leak
         this.registry.updateMetadata(pluginName, { componentRef: undefined });
+      }
+
+      // v1.4.0: Destroy NgModule reference if exists
+      if (metadata.moduleReference && typeof metadata.moduleReference.destroy === 'function') {
+        this.debugLog(`Destroying NgModule for plugin '${pluginName}'`);
+        try {
+          metadata.moduleReference.destroy();
+        } catch (error) {
+          // Defensive: continue cleanup even if module destruction fails
+          this.debugLog(`Warning: NgModule destruction failed for '${pluginName}': ${error}`);
+        }
       }
 
       // v1.1.1: Memory optimization - Clear module and injector references
@@ -347,10 +364,40 @@ export class PluginManager {
         this.registry.updateMetadata(pluginName, { componentRef: undefined });
       }
 
+      // v1.4.0: Support for NgModule loading
+      let componentInjector = injector;
+
+      // Check if NgModule was already created during load phase
+      if (metadata.manifest.entryModule) {
+        if (metadata.ngModuleRef) {
+          // Reuse existing NgModule reference
+          this.debugLog(`Reusing NgModule for plugin '${pluginName}'`);
+          componentInjector = metadata.ngModuleRef.injector;
+        } else {
+          // Create NgModule if not yet created
+          this.debugLog(`Creating NgModule for plugin '${pluginName}'`);
+          const ngModuleRef = createNgModule(metadata.manifest.entryModule, injector);
+          componentInjector = ngModuleRef.injector;
+          this.registry.updateMetadata(pluginName, { ngModuleRef: ngModuleRef });
+        }
+      }
+
       const componentRef = viewContainer.createComponent(
         metadata.manifest.entryComponent,
-        { injector }
+        { injector: componentInjector }
       );
+
+      // v1.4.0: For NgModule plugins, call onLoad here since it was skipped during load phase
+      if (metadata.manifest.entryModule && componentRef.instance.onLoad) {
+        this.debugLog(`Calling onLoad() for NgModule plugin '${pluginName}'`);
+        const hookStartTime = Date.now();
+        await this.callPluginLifecycleHookWithTimeout(
+          Promise.resolve(componentRef.instance.onLoad(context)),
+          pluginName,
+          'onLoad'
+        );
+        this.debugLog(`onLoad() completed in ${Date.now() - hookStartTime}ms for plugin '${pluginName}'`);
+      }
 
       // v1.1.0: Enhancement #3 - Track activation time
       this.logStateTransition(pluginName, metadata.state, PluginState.ACTIVE);
@@ -441,8 +488,22 @@ export class PluginManager {
 
       this.registry.setInjector(pluginName, pluginInjector);
 
-      const instance = new module.PluginManifest.entryComponent();
-      if (instance.onLoad) {
+      // v1.4.0: Create NgModule if present for later use
+      let ngModuleRef: NgModuleRef<any> | undefined;
+      const hasEntryModule = !!module.PluginManifest.entryModule;
+
+      if (hasEntryModule) {
+        this.debugLog(`Creating NgModule for plugin '${pluginName}' during load`);
+        ngModuleRef = createNgModule(module.PluginManifest.entryModule, pluginInjector);
+        // Store for later use in createPluginComponent (use ngModuleRef, not moduleReference)
+        this.registry.updateMetadata(pluginName, { ngModuleRef: ngModuleRef });
+      }
+
+      // For NgModule plugins, onLoad will be called during createPluginComponent
+      // where the component is created with proper dependency injection
+      const instance = hasEntryModule ? null : new module.PluginManifest.entryComponent();
+
+      if (instance && instance.onLoad) {
         // v1.1.0: Enhancement #2 - Debug logging
         this.debugLog(`Calling onLoad() for plugin '${pluginName}'`);
         const hookStartTime = Date.now();
